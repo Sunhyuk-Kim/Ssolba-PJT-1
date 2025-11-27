@@ -1,0 +1,8 @@
+
+{
+  "name": "AI Fashion Stylist",
+  "description": "Get instant, AI-powered fashion feedback on your outfits. Upload a photo of your look and our AI stylist will provide a detailed analysis, improvement suggestions, and even generate alternative style ideas to help you look and feel your best.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
