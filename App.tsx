@@ -1,118 +1,87 @@
+import { useState } from 'react';
+import { GoogleGenerativeAI } from '@google/generative-ai';
+import { Upload, Sparkles, Shirt, Loader2 } from 'lucide-react';
 
-import React, { useState, useCallback } from 'react';
-import { HomeScreen } from './components/HomeScreen.tsx';
-import { LoadingScreen } from './components/LoadingScreen.tsx';
-import { ResultScreen } from './components/ResultScreen.tsx';
-import { useFashionAI } from './hooks/useFashionAI.ts';
-import type { FashionAnalysisResult } from './types.ts';
-import { resizeImage } from './utils/image.ts';
+// API 키 설정 (Vercel 환경변수에서 가져옴)
+const API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
 
-type Screen = 'home' | 'loading' | 'result';
+export default function App() {
+  const [image, setImage] = useState<string | null>(null);
+  const [result, setResult] = useState<string>('');
+  const [loading, setLoading] = useState(false);
 
-function App() {
-    const [screen, setScreen] = useState<Screen>('home');
-    const [userImage, setUserImage] = useState<string | null>(null);
-    const [analysisResult, setAnalysisResult] = useState<FashionAnalysisResult | null>(null);
-    const [generatedImages, setGeneratedImages] = useState<string[] | null>(null);
-    const [error, setError] = useState<string | null>(null);
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => setImage(reader.result as string);
+      reader.readAsDataURL(file);
+    }
+  };
 
-    const { analyzeAndGenerate, isLoading } = useFashionAI();
+  const analyzeFashion = async () => {
+    if (!image) return alert('사진을 먼저 올려주세요!');
+    if (!API_KEY) return alert('API 키가 설정되지 않았습니다. 배포 환경을 확인하세요.');
 
-    const handleImageUpload = useCallback(async (file: File) => {
-        setError(null);
-        setScreen('loading');
+    setLoading(true);
+    try {
+      const genAI = new GoogleGenerativeAI(API_KEY);
+      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+      
+      // 이미지 처리 (base64)
+      const base64Data = image.split(',')[1];
+      const imagePart = {
+        inlineData: { data: base64Data, mimeType: "image/jpeg" },
+      };
 
-        try {
-            const resizedFile = await resizeImage(file, 1024, 1024);
-            const reader = new FileReader();
-            reader.readAsDataURL(resizedFile);
-            reader.onload = async () => {
-                const base64Image = (reader.result as string).split(',')[1];
-                setUserImage(reader.result as string);
+      const prompt = "이 사진 속 인물의 패션을 분석해줘. 스타일의 특징, 색상 조합, 그리고 이 옷에 어울릴만한 액세서리나 신발을 추천해줘. 친구가 말해주는 것처럼 친근하게 한국어로 대답해줘.";
+      
+      const result = await model.generateContent([prompt, imagePart]);
+      setResult(result.response.text());
+    } catch (error) {
+      console.error(error);
+      setResult("죄송해요, 분석 중에 오류가 발생했어요. 다시 시도해 주세요.");
+    }
+    setLoading(false);
+  };
 
-                const result = await analyzeAndGenerate(base64Image, resizedFile.type);
-                if (result) {
-                    setAnalysisResult(result.analysis);
-                    setGeneratedImages(result.generatedImages);
-                    setScreen('result');
-                } else {
-                    throw new Error('AI analysis failed to return a result.');
-                }
-            };
-            reader.onerror = () => {
-                throw new Error('Failed to read the image file.');
-            };
-        } catch (e) {
-            console.error(e);
-            const errorMessage = e instanceof Error ? e.message : 'An unknown error occurred.';
-            setError(`오류가 발생했습니다: ${errorMessage}. 다시 시도해주세요.`);
-            setScreen('home');
-        }
-    }, [analyzeAndGenerate]);
+  return (
+    <div style={{ maxWidth: '600px', margin: '0 auto', padding: '20px', fontFamily: 'sans-serif' }}>
+      <header style={{ textAlign: 'center', marginBottom: '30px' }}>
+        <h1 style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px' }}>
+          <Shirt color="#6366f1" /> AI 패션 스타일리스트
+        </h1>
+        <p style={{ color: '#666' }}>오늘의 코디를 분석하고 조언을 받아보세요!</p>
+      </header>
 
-    const handleReset = () => {
-        setScreen('home');
-        setUserImage(null);
-        setAnalysisResult(null);
-        setGeneratedImages(null);
-        setError(null);
-    };
-    
-    const handleRerun = async () => {
-        if (!userImage) return;
-        setScreen('loading');
-        setError(null);
-        try {
-            const base64Image = userImage.split(',')[1];
-            // This assumes the mime type is jpeg, which is a reasonable default for photos.
-            const result = await analyzeAndGenerate(base64Image, 'image/jpeg');
-            if (result) {
-                setAnalysisResult(result.analysis);
-                setGeneratedImages(result.generatedImages);
-                setScreen('result');
-            } else {
-                throw new Error('AI analysis failed to return a result.');
-            }
-        } catch (e) {
-            console.error(e);
-            const errorMessage = e instanceof Error ? e.message : 'An unknown error occurred.';
-            setError(`오류가 발생했습니다: ${errorMessage}. 다시 시도해주세요.`);
-            setScreen('home');
-        }
-    };
+      <div style={{ border: '2px dashed #ccc', borderRadius: '12px', padding: '40px', textAlign: 'center', marginBottom: '20px', cursor: 'pointer', position: 'relative' }}>
+        <input type="file" accept="image/*" onChange={handleImageUpload} style={{ opacity: 0, position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', cursor: 'pointer' }} />
+        {image ? (
+          <img src={image} alt="Upload" style={{ maxHeight: '300px', maxWidth: '100%', borderRadius: '8px' }} />
+        ) : (
+          <div style={{ color: '#888' }}>
+            <Upload size={48} style={{ marginBottom: '10px' }} />
+            <p>사진을 여기로 드래그하거나 클릭해서 업로드하세요</p>
+          </div>
+        )}
+      </div>
 
-    const renderScreen = () => {
-        switch (screen) {
-            case 'loading':
-                return <LoadingScreen />;
-            case 'result':
-                if (analysisResult && generatedImages && userImage) {
-                    return (
-                        <ResultScreen
-                            userImage={userImage}
-                            analysis={analysisResult}
-                            generatedImages={generatedImages}
-                            onReset={handleReset}
-                            onRerun={handleRerun}
-                        />
-                    );
-                }
-                // Fallback to home if result data is missing
-                handleReset();
-                return <HomeScreen onImageUpload={handleImageUpload} error={error} />;
-            case 'home':
-            default:
-                return <HomeScreen onImageUpload={handleImageUpload} error={error} />;
-        }
-    };
+      <button 
+        onClick={analyzeFashion} 
+        disabled={loading || !image}
+        style={{ width: '100%', padding: '15px', backgroundColor: loading ? '#ccc' : '#6366f1', color: 'white', border: 'none', borderRadius: '8px', fontSize: '18px', fontWeight: 'bold', cursor: loading ? 'not-allowed' : 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '10px' }}
+      >
+        {loading ? <><Loader2 className="spin" /> 분석 중...</> : <><Sparkles /> 스타일 분석하기</>}
+      </button>
 
-    return (
-        <div className="min-h-screen bg-[#FDF7F9] text-gray-800">
-            <div className="container mx-auto max-w-lg p-4">
-                {renderScreen()}
-            </div>
+      {result && (
+        <div style={{ marginTop: '30px', padding: '20px', backgroundColor: '#f5f7ff', borderRadius: '12px', lineHeight: '1.6' }}>
+          <h3 style={{ marginTop: 0 }}>✨ 분석 결과</h3>
+          <div style={{ whiteSpace: 'pre-wrap' }}>{result}</div>
         </div>
-    );
+      )}
+      
+      <style>{` .spin { animation: spin 1s linear infinite; } @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } } `}</style>
+    </div>
+  );
 }
-
-export default App;
